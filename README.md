@@ -1,140 +1,230 @@
-# 🔌 Shelly Pro 3EM → PostgreSQL Collector
+# ⚡ Shelly Pro 3EM → PostgreSQL Collector
 
-**Worker para Railway - Arquitetura PostgreSQL Only**
+[![Railway](https://img.shields.io/badge/Deploy%20on-Railway-blueviolet)](https://railway.app/new/template)
+[![Python](https://img.shields.io/badge/Python-3.11.7-blue)](https://www.python.org/)
+[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-Coleta dados direto do Shelly Pro 3EM e guarda no PostgreSQL Railway, eliminando dependência do iMac e InfluxDB.
+**Worker automático para Railway** que coleta dados elétricos do Shelly Pro 3EM e armazena no PostgreSQL.
+
+Monitoriza potência, corrente, tensão, fator de potência e frequência em tempo real, com visualização no Grafana.
 
 ---
 
-## 📋 O Que Faz
+## ✨ Features
+
+- ✅ **Coleta automática a cada 60s** do Shelly Pro 3EM
+- ✅ **PostgreSQL Railway** como única base de dados
+- ✅ **Métricas completas**: Potência, Corrente, Tensão, Fator de Potência, Frequência
+- ✅ **3 fases + total** (A, B, C)
+- ✅ **Grafana Dashboard** incluído
+- ✅ **Zero dependências** de servidores locais (com Tailscale/Tunnel)
+- ✅ **Migration tool** do InfluxDB incluída
+
+---
+
+## 📊 Arquitetura
 
 ```
-Shelly Pro 3EM (LAN)
-    ↓ HTTP Request a cada 60s
-collector-railway (Railway Worker)
-    ↓ INSERT PostgreSQL
+Shelly Pro 3EM (192.168.0.245)
+    ↓ HTTP GET a cada 60s
+Railway Worker (collect_shelly_postgres.py)
+    ↓ INSERT INTO PostgreSQL
 PostgreSQL Railway
     ↓
-    ├─→ shelly-api-railway (Flask)
-    └─→ Grafana Railway
+    ├─→ Grafana Railway (Visualização)
+    └─→ Flask API (Acesso via REST)
 ```
+
+**Sem InfluxDB. Sem iMac. PostgreSQL Only.**
 
 ---
 
-## 🚀 Deploy no Railway
+## 🚀 Deploy Rápido
 
-### 1. Criar Repositório GitHub
+### Passo 1: Fork/Clone este repo
 
 ```bash
-cd /root/shelly-collector-railway
-git init
-git add .
-git commit -m "Initial commit: Shelly PostgreSQL collector"
-git branch -M main
-git remote add origin https://github.com/MarcioMiguel22/shelly-collector-railway.git
-git push -u origin main
+git clone https://github.com/MarcioMiguel22/shelly-collector-railway.git
+cd shelly-collector-railway
 ```
 
-### 2. Deploy no Railway
+### Passo 2: Deploy no Railway
 
-1. Vai a https://railway.app/new
-2. **Deploy from GitHub repo**
-3. Seleciona `shelly-collector-railway`
-4. Railway faz deploy automático
+1. Vai a **https://railway.app/**
+2. **New Project** → **Deploy from GitHub repo**
+3. Seleciona **shelly-collector-railway**
+4. Railway detecta automaticamente o `Procfile` e `runtime.txt`
 
-### 3. Configurar Variáveis
+### Passo 3: Configurar Variáveis
 
 No Railway → **Variables**:
 
 ```bash
-# IP do Shelly na tua rede local
+# PostgreSQL (usa referência automática do Railway)
+DATABASE_URL=${{Postgres.DATABASE_URL}}
+
+# IP do Shelly (ver nota abaixo sobre acesso à rede)
 SHELLY_IP=192.168.0.245
 
-# PostgreSQL (Railway fornece automaticamente)
-DATABASE_URL=postgresql://...
-
-# Intervalo de coleta (opcional, default 60s)
+# Intervalo de coleta (opcional)
 COLLECTION_INTERVAL=60
 ```
 
-**IMPORTANTE**: O Railway precisa conseguir aceder ao IP `192.168.0.245`. Isto só funciona se:
-- Railway estiver na mesma VPN/rede (Tailscale, Cloudflare Tunnel, etc.)
-- OU usar um proxy/bridge na tua rede local
+### Passo 4: ⚠️ Resolver Acesso ao Shelly
 
-### 4. Configurar Acesso ao Shelly
+O Shelly está na tua rede local. Escolhe uma opção:
 
-**Opção A: Usar Tailscale (RECOMENDADO)**
+| Opção | Complexidade | Recomendado para |
+|-------|--------------|------------------|
+| **Tailscale** | Média | Produção |
+| **Cloudflare Tunnel** | Média | Produção alternativa |
+| **Executar localmente** | Baixa | Teste/Temporário |
 
-1. Instala Tailscale no Railway (via Railway Template)
-2. Conecta à tua Tailnet
-3. O Shelly fica acessível via IP Tailscale
-
-**Opção B: Cloudflare Tunnel**
-
-1. Cria tunnel para tua rede local
-2. Expõe Shelly via tunnel
-3. Usa URL do tunnel em `SHELLY_IP`
-
-**Opção C: Manter no iMac (Temporário)**
-
-Se preferires manter coleta no iMac temporariamente:
-```bash
-# No iMac
-cd /root/shelly-collector-railway
-python3 collect_shelly_postgres.py
-```
+📖 **Ver guia completo**: [DEPLOY_RAILWAY_GUIDE.md](DEPLOY_RAILWAY_GUIDE.md)
 
 ---
 
-## 📊 Tabelas PostgreSQL
+## 📊 Dados Coletados
 
-### `shelly_power_readings`
-Leituras de potência (total + por fase)
+O collector guarda dados em **4 tabelas PostgreSQL**:
 
-### `shelly_phase_data`
-Dados detalhados por fase (potência reativa, aparente, etc.)
+### `shelly_power_readings` (Principal)
+Leituras de potência, corrente, tensão, fator de potência e frequência.
+- Total + 3 fases (A, B, C)
+- Atualizado a cada 60s
+- Índices otimizados para queries temporais
 
-### `shelly_energy_summary`
-Resumos de energia acumulada
+### `shelly_phase_data` (Detalhado)
+Potência ativa, reativa, aparente por fase.
 
-### `shelly_device_info`
-Informações do dispositivo
+### `shelly_energy_summary` (Acumulado)
+Energia total consumida/retornada.
+
+### `shelly_device_info` (Status)
+Firmware, uptime, temperatura, WiFi RSSI.
+
+---
+
+## 📈 Grafana Dashboard
+
+Dashboard completo incluído: **⚡ Shelly Pro 3EM - Monitor Completo**
+
+**Métricas visualizadas**:
+- 🔌 Potência TOTAL + por fase (W)
+- ⚡ Corrente TOTAL + por fase (A)
+- 🔋 Tensão média + por fase (V)
+- 📐 Fator de potência por fase
+- 🌊 Frequência da rede (Hz)
+- 📋 Tabela com últimas 50 leituras
+
+**Cores por fase**: A=🔴 Vermelho | B=🟡 Amarelo | C=🔵 Azul
 
 ---
 
 ## 🧪 Testar Localmente
 
 ```bash
-export SHELLY_IP="192.168.0.245"
-export DATABASE_URL="postgresql://postgres:password@localhost/railway"
-export COLLECTION_INTERVAL="60"
+# Clonar e configurar
+git clone https://github.com/MarcioMiguel22/shelly-collector-railway.git
+cd shelly-collector-railway
 
+# Instalar dependências
+pip install -r requirements.txt
+
+# Configurar variáveis
+export SHELLY_IP="192.168.0.245"
+export DATABASE_URL="postgresql://user:pass@host:port/db"
+
+# Executar
 python3 collect_shelly_postgres.py
+```
+
+**Output esperado**:
+```
+🔌 Shelly Pro 3EM → PostgreSQL Collector
+Shelly IP: 192.168.0.245
+PostgreSQL: host:port/db
+✓ Conectado ao PostgreSQL Railway
+✓ Tabelas verificadas/criadas
+
+--- Coleta #1 ---
+✓ Dados recebidos do Shelly
+✓ Guardados 4 readings + 3 phase data (Total: 245.32W)
 ```
 
 ---
 
-## ✅ Vantagens desta Arquitetura
+## 🗂️ Estrutura do Projeto
 
-- ✅ **Sem InfluxDB** - 1 base de dados só
-- ✅ **Sem dependência do iMac** (com Tailscale/Tunnel)
-- ✅ **Grafana funcional** - Já configurado
-- ✅ **API continua a funcionar** - Lê do PostgreSQL
-- ✅ **Simples e barato** - €0-5/mês
+```
+shelly-collector-railway/
+├── collect_shelly_postgres.py    # Worker principal
+├── migrate_influx_to_postgres.py # Migration tool (InfluxDB → PostgreSQL)
+├── requirements.txt               # Dependências Python
+├── runtime.txt                    # Python 3.11.7
+├── Procfile                       # Railway worker config
+├── README.md                      # Este ficheiro
+├── DEPLOY_RAILWAY_GUIDE.md        # Guia de deploy detalhado
+└── CEREBRO_SISTEMA_SHELLY_RAILWAY.md  # Documentação técnica completa
+```
 
 ---
 
-## 📦 Próximos Passos
+## 🔧 Migration do InfluxDB
 
-Depois do deploy:
+Se tens dados históricos no InfluxDB Cloud:
+
+```bash
+# Configurar variáveis
+export INFLUX_URL="https://us-east-1-1.aws.cloud2.influxdata.com"
+export INFLUX_ORG="TUA_ORG"
+export INFLUX_TOKEN="TUA_TOKEN"
+export INFLUX_BUCKET="energy"
+export DATABASE_URL="postgresql://..."
+export MIGRATION_DAYS="30"  # Quantos dias migrar
+
+# Executar migração
+python3 migrate_influx_to_postgres.py
+```
+
+---
+
+## 📖 Documentação
+
+- **[DEPLOY_RAILWAY_GUIDE.md](DEPLOY_RAILWAY_GUIDE.md)** - Guia completo de deploy
+- **[CEREBRO_SISTEMA_SHELLY_RAILWAY.md](CEREBRO_SISTEMA_SHELLY_RAILWAY.md)** - Documentação técnica (credenciais, queries, troubleshooting)
+
+---
+
+## 🎯 Próximos Passos
+
+Depois do deploy bem-sucedido:
 
 1. ✅ Verificar logs no Railway
-2. ✅ Confirmar dados a chegar no PostgreSQL
-3. ✅ Atualizar API Flask para ler do PostgreSQL
-4. ✅ Testar Grafana com dados reais
-5. ✅ Desligar iMac (se usar Tailscale)
+2. ✅ Confirmar dados completos no PostgreSQL (corrente, tensão, etc.)
+3. ✅ Abrir Grafana e verificar dashboard
+4. ✅ Migrar dados históricos do InfluxDB (opcional)
+5. ✅ Desativar InfluxDB Cloud
+6. ✅ Desligar coleta local (se aplicável)
+
+---
+
+## 💰 Custo
+
+- **Railway Free Tier**: $5 créditos/mês
+- **Este setup**: ~€0-2/mês (Worker + PostgreSQL)
+- **InfluxDB eliminado**: -€0 (já não é necessário)
+
+**Total**: Praticamente grátis! 🎉
+
+---
+
+## 📝 License
+
+MIT License - Usa à vontade!
 
 ---
 
 **Criado por:** Márcio Miguel + Claude
-**Data:** 2026-01-13
+**Data:** 2026-01-14
+**Repositório:** https://github.com/MarcioMiguel22/shelly-collector-railway

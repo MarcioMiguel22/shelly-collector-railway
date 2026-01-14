@@ -1,1 +1,1 @@
-worker: python collect_shelly_postgres.py
+worker: python collect_shelly_cloud.py
